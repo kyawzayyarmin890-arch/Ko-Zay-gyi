@@ -150,11 +150,6 @@
   </style>
 </head>
 <body>
-  <!-- iPhone Message Sound (Tri-tone) -->
-  <audio id="notifSound" preload="auto">
-    <source src="https://www.myinstants.com/media/sounds/iphone-sms.mp3" type="audio/mpeg">
-  </audio>
-
   <header class="container" id="home">
     <div class="topbar">
       <div class="brand">
@@ -280,7 +275,6 @@
     const database = firebase.database();
 
     let currentUser = null;
-    let initialLoadDone = false; // Page စဖွင့်ချင်း အသံမမြည်စေရန်
 
     document.getElementById("year").textContent = new Date().getFullYear();
 
@@ -326,6 +320,7 @@
       }
       try {
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        // Save user profile to database
         await database.ref("users/" + userCredential.user.uid).set({
           email: email,
           createdAt: firebase.database.ServerValue.TIMESTAMP
@@ -346,6 +341,7 @@
       }
       try {
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
+        // Update user profile/last login in database
         await database.ref("users/" + userCredential.user.uid).update({
           email: email,
           lastLogin: firebase.database.ServerValue.TIMESTAMP
@@ -383,6 +379,7 @@
       button.textContent = user ? "👤 အကောင့်ဝင်ထားသည်" : "👤 အကောင့်ဝင်ရန်";
       showAccountStatus();
       if (user) {
+        // Save/verify user entry in database
         database.ref("users/" + user.uid).update({
           email: user.email || ""
         });
@@ -463,37 +460,31 @@
         return;
       }
       list.innerHTML = '<p class="muted">အချက်အလက်များ ဖတ်နေသည်...</p>';
-      
-      database.ref("repairRequests")
-        .orderByChild("uid")
-        .equalTo(currentUser.uid)
-        .on("value", snapshot => {
-          if (!snapshot.exists()) {
-            list.innerHTML = '<div class="repair-demo"><strong>တောင်းဆိုချက် မရှိသေးပါ</strong><p class="muted">“ပြင်အပ်ရန်” ကိုနှိပ်ပြီး စတင်တင်နိုင်ပါသည်။</p></div>';
-            return;
-          }
-          const requests = [];
-          snapshot.forEach(child => requests.push({ key: child.key, ...child.val() }));
-          requests.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-          // Check if status changed or updated by Admin to play notification sound
-          if (initialLoadDone) {
-            const sound = document.getElementById("notifSound");
-            sound.play().catch(e => console.log("Audio play blocked:", e));
-          }
-          initialLoadDone = true;
-
-          list.innerHTML = requests.map(item => {
-            const date = item.createdAt ? new Date(item.createdAt).toLocaleString("my-MM") : "ယခုလေးတင်";
-            const safe = value => String(value || "").replace(/[&<>"']/g, char => ({
-              "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
-            }[char]));
-            return `<div class="repair-demo">
-              <div class="repair-top"><strong>${safe(item.phoneModel)}</strong><span class="status">${safe(item.status || "လက်ခံရရှိ")}</span></div>
-              <p class="muted">အမည်: ${safe(item.customerName)}<br>ပြဿနာ: ${safe(item.problem)}<br>ဆက်သွယ်ရန်: ${safe(item.customerPhone)}<br>တင်သွင်းချိန်: ${safe(date)}</p>
-            </div>`;
-          }).join("");
-        });
+      try {
+        const snapshot = await database.ref("repairRequests")
+          .orderByChild("uid")
+          .equalTo(currentUser.uid)
+          .once("value");
+        if (!snapshot.exists()) {
+          list.innerHTML = '<div class="repair-demo"><strong>တောင်းဆိုချက် မရှိသေးပါ</strong><p class="muted">“ပြင်အပ်ရန်” ကိုနှိပ်ပြီး စတင်တင်နိုင်ပါသည်။</p></div>';
+          return;
+        }
+        const requests = [];
+        snapshot.forEach(child => requests.push({ key: child.key, ...child.val() }));
+        requests.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
+        list.innerHTML = requests.map(item => {
+          const date = item.createdAt ? new Date(item.createdAt).toLocaleString("my-MM") : "ယခုလေးတင်";
+          const safe = value => String(value || "").replace(/[&<>"']/g, char => ({
+            "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+          }[char]));
+          return `<div class="repair-demo">
+            <div class="repair-top"><strong>${safe(item.phoneModel)}</strong><span class="status">${safe(item.status || "လက်ခံရရှိ")}</span></div>
+            <p class="muted">အမည်: ${safe(item.customerName)}<br>ပြဿနာ: ${safe(item.problem)}<br>ဆက်သွယ်ရန်: ${safe(item.customerPhone)}<br>တင်သွင်းချိန်: ${safe(date)}</p>
+          </div>`;
+        }).join("");
+      } catch (error) {
+        list.innerHTML = '<div class="repair-demo"><strong>အချက်အလက်ဖတ်မရပါ</strong><p class="muted">Database Rules သို့မဟုတ် Internet ချိတ်ဆက်မှုကို စစ်ပါ။</p></div>';
+      }
     }
 
     document.querySelectorAll(".modal").forEach(modal => {
